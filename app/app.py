@@ -78,43 +78,40 @@ class GeneralScraper:
                 self.key_word, self.min_price
             )
             
-            # Zamiast do JSONa -> do SQS
+            
             if new_products:
                 self.send_to_sqs(new_products, page_num)
             
             if await self._is_end_of_results(page_num):
                 break
             
-            # W Lambdzie warto skrócić delay, żeby nie płacić za czekanie
+            
             await self.page.wait_for_timeout(random.randint(500, 1500))
         
         await self.stop()
 
     def send_to_sqs(self, products, page_num):
-        """Wysyła listę produktów do kolejki SQS."""
         if not self.sqs_url:
-            print("BŁĄD: Brak SQS_URL w zmiennych środowiskowych.")
             return
 
-        try:
-            # Możemy wysłać całą listę jako jeden JSON
-            message_body = json.dumps(products, ensure_ascii=False)
-            
-            self.sqs.send_message(
-                QueueUrl=self.sqs_url,
-                MessageBody=message_body
-            )
-            print(f"Strona {page_num}: Wysłano {len(products)} produktów do SQS.")
-        except Exception as e:
-            print(f"Błąd SQS: {e}")
+        print(f"Wysyłam {len(products)} produktów do SQS (pojedynczo)...")
+        
+        for product in products:
+            try:
+                product['page_source'] = page_num
+                self.sqs.send_message(
+                    QueueUrl=self.sqs_url,
+                    MessageBody=json.dumps(product, ensure_ascii=False)
+                )
+            except Exception as e:
+                print(f"Błąd przy wysyłaniu pojedynczego produktu: {e}")
 
-    async def stop(self):
-        if self.browser:
-            await self.browser.close()
-            print("Przeglądarka zamknięta.")
+        async def stop(self):
+            if self.browser:
+                await self.browser.close()
+                print("Przeglądarka zamknięta.")
 
     async def _check_for_blocks(self, url):
-        # Twoja logika 403 zostaje, ale dodajmy licznik, żeby nie utknąć w nieskończonej pętli
         is_403 = await self.page.locator("h1:has-text('403 ERROR')").is_visible()
         if is_403:
             print("Wykryto blokadę 403!")
