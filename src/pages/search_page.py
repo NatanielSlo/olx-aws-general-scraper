@@ -44,18 +44,13 @@ class SearchPage:
 
     async def get_all_products(self,key_word,price_threshold):
         
-
         await self.listing_grid.wait_for()
         cards = await self.product_card.all()
-
         tasks = [self._parse_card(card, key_word, price_threshold) for card in cards]
-        
         scraped_data = []
-
         results = await asyncio.gather(*tasks)
-
         scraped_data = [r for r in results if r is not None]
-
+        
         return scraped_data
     
 

@@ -2,11 +2,10 @@ import json
 import os
 import random
 import asyncio
-import boto3  # Dodajemy boto3
+import boto3  
 
 from src.utils.url_builder import UrlBuilder
 from src.pages.search_page import SearchPage
-# Usunęliśmy PostgresUploader - w Lambdzie lepiej robić to przez SQS/API
 from playwright.async_api import async_playwright
 
 #TODO Get data from JSON event instead of env values
@@ -27,14 +26,12 @@ class GeneralScraper:
         
         # Inicjalizacja klienta SQS
         self.sqs = boto3.client('sqs')
-        # URL pobieramy ze zmiennej środowiskowej (ustawimy ją w AWS)
         self.sqs_url = os.environ.get('SQS_URL')
 
     async def start(self):
         playwright = await async_playwright().start()
-        # KLUCZOWE: Flagi dla Chromium w Lambdzie (Docker)
         self.browser = await playwright.chromium.launch(
-            headless=True, # Lambda musi być headless
+            headless=True, 
             args=[
                 "--single-process",
                 "--no-sandbox",
@@ -49,7 +46,6 @@ class GeneralScraper:
             viewport={'width': 1280, 'height': 720}
         )
         
-        # Blokowanie obrazków - oszczędza transfer i czas w Lambdzie
         await self.context.route("**/*", lambda route: 
             route.abort() if route.request.resource_type in ["image", "media", "font"] 
             else route.continue_()
@@ -74,7 +70,6 @@ class GeneralScraper:
             if await self._check_for_blocks(url):
                 continue
             
-            # Pobieranie produktów
             new_products = await self.search_page.get_all_products(
                 self.key_word, self.min_price
             )
@@ -124,7 +119,6 @@ class GeneralScraper:
             return True
         return False
 
-# HANDLER - to wywołuje AWS Lambda
 def handler(event, context):
     scraper = GeneralScraper()
     asyncio.run(scraper.run_search())
