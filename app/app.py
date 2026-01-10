@@ -9,6 +9,7 @@ from src.pages.search_page import SearchPage
 # Usunęliśmy PostgresUploader - w Lambdzie lepiej robić to przez SQS/API
 from playwright.async_api import async_playwright
 
+#TODO Get data from JSON event instead of env values
 
 class GeneralScraper:
     def __init__(self):
@@ -106,10 +107,10 @@ class GeneralScraper:
             except Exception as e:
                 print(f"Błąd przy wysyłaniu pojedynczego produktu: {e}")
 
-        async def stop(self):
-            if self.browser:
-                await self.browser.close()
-                print("Przeglądarka zamknięta.")
+    async def stop(self):
+        if self.browser:
+            await self.browser.close()
+            print("Przeglądarka zamknięta.")
 
     async def _check_for_blocks(self, url):
         is_403 = await self.page.locator("h1:has-text('403 ERROR')").is_visible()
