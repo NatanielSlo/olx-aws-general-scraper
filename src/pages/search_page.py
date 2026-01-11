@@ -20,7 +20,9 @@ class SearchPage:
                 link_node.get_attribute("href", timeout=1000)
             )
             
-            if key_word not in title.lower(): return None
+            if key_word not in title.lower(): 
+                print(f"Zły tytuł: {title.lower()}")
+                return None
 
             price_raw = await card.get_by_test_id("ad-price").inner_text(timeout=500)
             price_clean = price_raw.split("zł")[0].split(",")[0].replace(" ", "").replace("\xa0", "").strip()
@@ -28,9 +30,11 @@ class SearchPage:
             try:
                 price_int = int(price_clean)
             except ValueError:
+                print(f"{price_clean} is not a valid price")
                 return None
 
             if price_int < price_threshold:
+                print(f"{price_int} is to small, skipping product.")
                 return None
 
             return {
@@ -48,7 +52,7 @@ class SearchPage:
         cards = await self.product_card.all()
         tasks = [self._parse_card(card, key_word, price_threshold) for card in cards]
         scraped_data = []
-        results = await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         scraped_data = [r for r in results if r is not None]
         
         return scraped_data
