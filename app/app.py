@@ -66,33 +66,28 @@ class GeneralScraper:
             
             print(f"Scrapuję stronę {page_num}: {url}")
             
-            # Zmiana wait_until na networkidle - wolniej, ale pewniej na liście
-            await self.page.goto(url, wait_until="networkidle", timeout=8000)
+            await self.page.goto(url, wait_until="domcontentloaded", timeout=8000)
             
             if await self._check_for_blocks(url):
                 continue
 
             try:
-                await self.page.evaluate("window.scrollBy(0, 500)")
-                await self.page.wait_for_selector('[data-testid="listing-grid"]', timeout=5000)
+                await self.page.get_by_test_id("l-card").first.wait_for(state="visible", timeout=5000)
             except Exception:
-                print(f"Ostrzeżenie: Nie znaleziono listing-grid na stronie {page_num}. Próbuję scrapować co jest.")
+                print(f"Brak produktów na stronie {page_num} po 5s. Pomijam.")
+                continue
 
             new_products = await self.search_page.get_all_products(
                 self.key_word, self.min_price
             )
             
             if new_products:
-                print(f"Znaleziono {len(new_products)} produktów na stronie {page_num}")
                 self.send_to_sqs(new_products, page_num)
-            else:
-                print(f"UWAGA: Zero produktów na stronie {page_num}. URL: {self.page.url}")
             
             if await self._is_end_of_results(page_num):
-                print("Osiągnięto koniec wyników.")
                 break
             
-            await self.page.wait_for_timeout(random.randint(1000, 2000))
+            await self.page.wait_for_timeout(500)
         
         await self.stop()
 
