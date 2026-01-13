@@ -8,8 +8,6 @@ from src.utils.url_builder import UrlBuilder
 from src.pages.search_page import SearchPage
 from playwright.async_api import async_playwright
 
-#TODO Get data from JSON event instead of env values
-
 class GeneralScraper:
     def __init__(self):
         self.key_word = os.environ.get('KEY_WORD', '')
@@ -21,10 +19,7 @@ class GeneralScraper:
         self.url_builder = UrlBuilder()
         self.browser = None
         self.context = None
-        self.page = None
-        self.search_page = None
         
-        # Inicjalizacja klienta SQS
         self.sqs = boto3.client('sqs')
         self.sqs_url = os.environ.get('SQS_URL')
 
@@ -37,26 +32,25 @@ class GeneralScraper:
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
-                "--no-zygote"
+                "--no-zygote",
+                "--disable-setuid-sandbox"
             ]
         )
         
         self.context = await self.browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...",
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
             viewport={'width': 1280, 'height': 720}
         )
+        
         
         await self.context.route("**/*", lambda route: 
             route.abort() if route.request.resource_type in ["image", "media", "font"] 
             else route.continue_()
         )
-        
-        self.page = await self.context.new_page()
-        self.search_page = SearchPage(self.page)
-        print("Przeglądarka gotowa w AWS Lambda.")
+        print("Przeglądarka i kontekst gotowe.")
 
     async def run_search(self):
-        if not self.page:
+        if not self.browser:
             await self.start()
 
         for page_num in range(1, self.page_limit + 1):
@@ -64,30 +58,47 @@ class GeneralScraper:
                 self.query, page_num, phone_model=self.phone_model
             )
             
-            print(f"Scrapuję stronę {page_num}: {url}")
             
-            await self.page.goto(url, wait_until="domcontentloaded", timeout=8000)
+            page = await self.context.new_page()
+            search_page = SearchPage(page)
             
-            if await self._check_for_blocks(url):
-                continue
-
             try:
-                await self.page.get_by_test_id("l-card").first.wait_for(state="visible", timeout=5000)
-            except Exception:
-                print(f"Brak produktów na stronie {page_num} po 5s. Pomijam.")
-                continue
+                print(f"Scrapuję stronę {page_num}: {url}")
+                
+                
+                await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                
+                if await self._check_for_blocks(page):
+                    continue
 
-            new_products = await self.search_page.get_all_products(
-                self.key_word, self.min_price
-            )
+                
+                try:
+                    await page.get_by_test_id("l-card").first.wait_for(state="visible", timeout=7000)
+                except Exception:
+                    print(f"Brak produktów lub zmiana struktury na stronie {page_num}. HTML: { (await page.title()) }")
+                    continue
+
+                new_products = await search_page.get_all_products(
+                    self.key_word, self.min_price
+                )
+                
+                if new_products:
+                    self.send_to_sqs(new_products, page_num)
+                
+               
+                is_end = await self._is_end_of_results(page, page_num)
+                if is_end:
+                    print("Osiągnięto koniec wyników.")
+                    break
+                
+            except Exception as e:
+                print(f"Błąd na stronie {page_num}: {str(e)}")
+            finally:
+                
+                await page.close()
             
-            if new_products:
-                self.send_to_sqs(new_products, page_num)
             
-            if await self._is_end_of_results(page_num):
-                break
-            
-            await self.page.wait_for_timeout(500)
+            await asyncio.sleep(random.uniform(0.5, 1.5))
         
         await self.stop()
 
@@ -95,7 +106,7 @@ class GeneralScraper:
         if not self.sqs_url:
             return
 
-        print(f"Wysyłam {len(products)} produktów do SQS (pojedynczo)...")
+        print(f"Wysyłam {len(products)} produktów do SQS...")
         
         for product in products:
             try:
@@ -105,29 +116,37 @@ class GeneralScraper:
                     MessageBody=json.dumps(product, ensure_ascii=False)
                 )
             except Exception as e:
-                print(f"Błąd przy wysyłaniu pojedynczego produktu: {e}")
+                print(f"Błąd SQS: {e}")
 
     async def stop(self):
         if self.browser:
             await self.browser.close()
             print("Przeglądarka zamknięta.")
 
-    async def _check_for_blocks(self, url):
-        is_403 = await self.page.locator("h1:has-text('403 ERROR')").is_visible()
-        if is_403:
-            print("Wykryto blokadę 403!")
+    async def _check_for_blocks(self, page):
+        # Sprawdzamy czy nie ma 403 lub Cloudflare
+        content = await page.content()
+        if "403 Forbidden" in content or "Access Denied" in content:
+            print("Wykryto blokadę 403/Access Denied!")
             return True
         return False
 
-    async def _is_end_of_results(self, page_num):
-        if f"page={page_num}" not in self.page.url and page_num > 1:
+    async def _is_end_of_results(self, page, page_num):
+        # Jeśli URL się zmienił (np. przekierowanie na stronę 1), to koniec
+        current_url = page.url
+        if f"page={page_num}" not in current_url and page_num > 1:
             return True
         return False
 
 def handler(event, context):
     scraper = GeneralScraper()
-    asyncio.run(scraper.run_search())
+    try:
+        asyncio.run(scraper.run_search())
+    except Exception as e:
+        print(f"Krytyczny błąd handlera: {e}")
+        raise e
+    
     return {
         "statusCode": 200,
-        "body": "Scrapowanie zakończone pomyślnie."
+        "body": "Scrapowanie zakończone."
     }
