@@ -100,10 +100,20 @@ docker run --env-file .env olx-scraper
 
 ## 📊 Results
 
-- **2,420+ listings** scraped across multiple categories
-- Continuous operation over several days via automated scheduling
-- Detected price anomalies and modeled condition-based price degradation curves
+**35,544 Lambda invocations** over 3 weeks of continuous operation
+**2,424 listings** stored in DynamoDB across multiple product categories
 
+### AWS Infrastructure
+
+![DynamoDB Active Count](screeny-github/active-status-count.png)
+
+![Lambda Invocations](screeny-github/lambda-invocations.png)
+
+![SQS Queues](screeny-github/kolejki.png)
+
+![DynamoDB Read Usage](screeny-github/read-usage-aws.png)
+
+![Sample Records](screeny-github/records.png)
 ---
 
 ## 📌 Key Design Decisions
