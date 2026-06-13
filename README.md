@@ -1,8 +1,10 @@
 # OLX Market Analyzer 📊
 
-An automated market intelligence pipeline built on AWS that scrapes OLX listings, detects price anomalies, and models how product condition factors affect resale value.
+An automated market intelligence pipeline built on AWS that scrapes OLX listings, 
+detects price anomalies, and models how product condition factors affect resale value.
 
-> **2,420+ listings scraped** across multiple product categories over several days of continuous operation.
+> **2,424 listings** stored in DynamoDB · **35,544 Lambda invocations** · 
+> **3 weeks** of continuous automated operation · **5 SQS queues** orchestrating the pipeline
 
 ---
 
